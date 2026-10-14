@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the workflow can read the code and nothing else.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Every action is pinned to a full commit SHA; Dependabot proposes updates.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Lint and tests
+        run: make setup lint test
+      - name: End-to-end replay of a pinned production trace (cluster045) against the committed numbers
+        run: |
+          set -o pipefail
+          make e2e | tee e2e.txt || { echo "::error title=e2e::$(grep '^RESULT' e2e.txt || tail -n 1 e2e.txt)"; exit 1; }
+          result=$(grep '^RESULT' e2e.txt)
+          if echo "$result" | grep -q 'above_infinite=0 expected=match'; then
+            echo "::notice title=e2e::$result"
+          else
+            echo "::error title=e2e::$result"
+            exit 1
+          fi
+      - name: Known-vulnerability audit (OSV.dev)
+        run: |
+          set -o pipefail
+          make audit | tee audit.txt || { echo "::error title=audit::$(tail -n 1 audit.txt)"; exit 1; }
+          echo "::notice title=audit::$(tail -n 1 audit.txt)"

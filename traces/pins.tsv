@@ -1,0 +1,10 @@
+# Public production cache traces replayed by `lab bench`, pinned by URL (at a fixed commit), exact size and SHA-256.
+# Source: Twitter's Twemcache/Pelikan traces, March 2020 (https://github.com/twitter/cache-trace), 1,000,000-request
+# samples from the repository's samples/2020Mar folder. Licence: CC BY 4.0. Citation: Juncheng Yang, Yao Yue and
+# Rashmi Vinayak, "A large scale analysis of hundreds of in-memory cache clusters at Twitter", OSDI 2020.
+name	url	bytes	sha256	licence
+cluster017	https://raw.githubusercontent.com/twitter/cache-trace/1c503676d6972d4394a360e09162149a6c00f516/samples/2020Mar/cluster017	37468997	a7f0377b9e35af8ed72fb74df79408cae85700138e289f277d63e9bacc771ae1	CC-BY-4.0
+cluster024	https://raw.githubusercontent.com/twitter/cache-trace/1c503676d6972d4394a360e09162149a6c00f516/samples/2020Mar/cluster024	56937803	17e94a964f370d935cbb3972755cf015c7eaba76bbef3a405818f0b0c79bcdef	CC-BY-4.0
+cluster044	https://raw.githubusercontent.com/twitter/cache-trace/1c503676d6972d4394a360e09162149a6c00f516/samples/2020Mar/cluster044	44272155	358cf8ab755b05a266dd9fc8b30843ffc8da3244eb7f9af09a51066ca49a2bb6	CC-BY-4.0
+cluster045	https://raw.githubusercontent.com/twitter/cache-trace/1c503676d6972d4394a360e09162149a6c00f516/samples/2020Mar/cluster045	34557882	2cb4a383e82c0ed8ab7add51733a7b5b4820023f3caffd8a5ef8b5a57964e705	CC-BY-4.0
+cluster052	https://raw.githubusercontent.com/twitter/cache-trace/1c503676d6972d4394a360e09162149a6c00f516/samples/2020Mar/cluster052	44110178	f3f47903f0aad7a83260f5df63910c694da94ec7eee91bbde98cc34d46dabfe6	CC-BY-4.0
