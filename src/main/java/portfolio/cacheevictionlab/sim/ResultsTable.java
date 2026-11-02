@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,13 +40,20 @@ public final class ResultsTable {
         return out.toString();
     }
 
-    /** Writes rows to a file, replacing it. */
+    /** Writes rows to a file, replacing it atomically so a reader never sees half a table. */
     public static void write(Path file, List<HitRateRow> rows) throws IOException {
-        Path parent = file.toAbsolutePath().getParent();
+        Path target = file.toAbsolutePath();
+        Path parent = target.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Files.writeString(file, format(rows), StandardCharsets.UTF_8);
+        Path part = target.resolveSibling(target.getFileName() + ".part");
+        try {
+            Files.writeString(part, format(rows), StandardCharsets.UTF_8);
+            Files.move(part, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            Files.deleteIfExists(part);
+        }
     }
 
     /** Parses a results file written by {@link #write}. */

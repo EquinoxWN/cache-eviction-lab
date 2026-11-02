@@ -29,6 +29,11 @@ class ResultsTableTest {
         String text = Files.readString(file);
         assertTrue(text.startsWith(ResultsTable.HEADER + "\n"));
         assertTrue(text.contains("\t1000\t333\t33.3000\n"), text);
+        ResultsTable.write(file, ROWS.subList(0, 2));
+        assertEquals(ROWS.subList(0, 2), ResultsTable.read(file), "a second write replaces the table");
+        try (var listing = Files.list(file.getParent())) {
+            assertEquals(List.of(file), listing.toList(), "no temporary file is left behind");
+        }
     }
 
     @Test
@@ -39,6 +44,11 @@ class ResultsTableTest {
         List<String> diffs = ResultsTable.compare(ROWS, changed, Set.of("a"));
         assertEquals(1, diffs.size());
         assertTrue(diffs.get(0).contains("expected 333/1000"), diffs.get(0));
+        List<HitRateRow> resized =
+                List.of(ROWS.get(0), new HitRateRow("a", "lookaside", "lru", "1%", "11", 1_000, 333));
+        List<String> capacity = ResultsTable.compare(ROWS, resized, Set.of("a"));
+        assertEquals(1, capacity.size(), "same hits at a different capacity is still a difference");
+        assertTrue(capacity.get(0).contains("at capacity 10"), capacity.get(0));
         assertEquals(
                 1, ResultsTable.compare(ROWS, List.of(ROWS.get(0)), Set.of("a")).size());
         List<HitRateRow> extra =

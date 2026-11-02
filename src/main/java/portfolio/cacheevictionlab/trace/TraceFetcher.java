@@ -3,6 +3,8 @@ package portfolio.cacheevictionlab.trace;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -14,6 +16,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Downloads pinned traces and proves they are the pinned bytes.
@@ -21,13 +26,25 @@ import java.util.HexFormat;
  * <p>A download goes to {@code <name>.part}, stops as soon as it passes the pinned size, and is
  * renamed to {@code <name>.csv} only after the size and SHA-256 match. Redirects are not followed.
  * A trace already on disk is re-hashed instead of downloaded again, and a file that does not match
- * its pin is reported, never overwritten.
+ * its pin is reported, never overwritten. A whole download, body included, must finish within a
+ * deadline (10 minutes by default); a stalled body is closed and the download fails.
  */
 public final class TraceFetcher implements AutoCloseable {
     private final HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
             .connectTimeout(Duration.ofSeconds(30))
             .build();
+    private final Duration deadline;
+
+    /** A fetcher with the default 10-minute download deadline. */
+    public TraceFetcher() {
+        this(Duration.ofMinutes(10));
+    }
+
+    /** A fetcher whose downloads, body included, must finish within {@code deadline}. */
+    TraceFetcher(Duration deadline) {
+        this.deadline = deadline;
+    }
 
     /** Releases the HTTP client's threads. */
     @Override
@@ -40,6 +57,11 @@ public final class TraceFetcher implements AutoCloseable {
 
     /** Ensures {@code dir/<name>.csv} holds exactly the pinned bytes, downloading it if absent. */
     public Fetched fetch(TracePin pin, Path dir) throws IOException, InterruptedException {
+        return fetch(pin, pin.url(), dir);
+    }
+
+    /** Same as {@link #fetch(TracePin, Path)}, reading the pinned bytes from {@code url} (tests serve them locally). */
+    Fetched fetch(TracePin pin, URI url, Path dir) throws IOException, InterruptedException {
         Files.createDirectories(dir);
         Path target = dir.resolve(pin.fileName());
         if (Files.exists(target)) {
@@ -47,12 +69,23 @@ public final class TraceFetcher implements AutoCloseable {
             return new Fetched(target, false);
         }
         Path part = dir.resolve(pin.name() + ".part");
-        HttpRequest request = HttpRequest.newBuilder(pin.url())
-                .timeout(Duration.ofMinutes(10))
-                .GET()
-                .build();
+        HttpRequest request =
+                HttpRequest.newBuilder(url).timeout(deadline).GET().build();
         HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        try (InputStream body = response.body()) {
+        InputStream body = response.body();
+        // The request timeout covers only the headers; closing the body wakes a read that stalls.
+        AtomicBoolean expired = new AtomicBoolean();
+        CompletableFuture<Void> watchdog = CompletableFuture.runAsync(
+                () -> {
+                    expired.set(true);
+                    try {
+                        body.close();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                },
+                CompletableFuture.delayedExecutor(deadline.toMillis(), TimeUnit.MILLISECONDS));
+        try (body) {
             if (response.statusCode() != 200) {
                 throw new IOException(pin.url() + " answered HTTP " + response.statusCode());
             }
@@ -75,7 +108,12 @@ public final class TraceFetcher implements AutoCloseable {
             check(pin, total, HexFormat.of().formatHex(sha.digest()));
         } catch (IOException e) {
             Files.deleteIfExists(part);
+            if (expired.get()) {
+                throw new IOException(pin.name() + ": download did not finish within " + deadline, e);
+            }
             throw e;
+        } finally {
+            watchdog.cancel(false);
         }
         Files.move(part, target, StandardCopyOption.ATOMIC_MOVE);
         return new Fetched(target, true);
