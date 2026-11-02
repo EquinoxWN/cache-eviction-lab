@@ -165,4 +165,15 @@ class ReplayerTest {
                 IllegalArgumentException.class,
                 () -> Replayer.replay("t", source, ReplayMode.LOOKASIDE, Arrays.asList(Policy.values()), many));
     }
+
+    @Test
+    void acceptsAGridOfExactlyTheLaneLimit() throws IOException {
+        List<BigDecimal> sizes = new ArrayList<>();
+        for (int i = 1; i <= Replayer.MAX_LANES / Policy.values().length; i++) {
+            sizes.add(BigDecimal.valueOf(i));
+        }
+        Replayer.Result result = Replayer.replay(
+                "t", text("0,a,1,1,1,get,0\n"), ReplayMode.LOOKASIDE, Arrays.asList(Policy.values()), sizes);
+        assertEquals(Replayer.MAX_LANES + 1, result.rows().size(), "every lane plus the never-evicting row");
+    }
 }

@@ -17,7 +17,7 @@ format:
 lint:
 	$(MVN) -DskipTests compile
 
-# 100 tests (about 35 s): every policy against a brute-force model on random operation sequences,
+# 108 tests (about 35 s): every policy against a brute-force model on random operation sequences,
 # the Cache contract, policy behaviour, trace parsing, pins, replay and the CLI end to end.
 test:
 	$(MVN) verify

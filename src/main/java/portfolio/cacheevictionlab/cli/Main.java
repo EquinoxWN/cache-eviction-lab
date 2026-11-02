@@ -243,6 +243,19 @@ public final class Main {
         out.printf(Locale.ROOT, "  (* best at that size; replayed in %.1f s, one run)%n%n", seconds);
     }
 
+    /** Cells that beat the never-evicting cache or counted a different number of reads. */
+    static List<String> ceilingBreaks(Replayer.Result result) {
+        HitRateRow infinite = result.rows().get(0);
+        List<String> broken = new ArrayList<>();
+        for (HitRateRow r : result.rows().subList(1, result.rows().size())) {
+            if (r.hits() > infinite.hits() || r.reads() != infinite.reads()) {
+                broken.add(r.cell() + " " + r.hits() + "/" + r.reads() + " vs never-evicting " + infinite.hits() + "/"
+                        + infinite.reads());
+            }
+        }
+        return broken;
+    }
+
     /** Checks invariants, writes and compares tables, and prints the RESULT line. */
     private static int finish(List<Replayer.Result> results, Args a, PrintStream out, PrintStream err)
             throws IOException {
@@ -253,14 +266,11 @@ public final class Main {
         for (Replayer.Result result : results) {
             traces.add(result.trace());
             rows.addAll(result.rows());
-            HitRateRow infinite = result.rows().get(0);
+            List<String> broken = ceilingBreaks(result);
+            aboveInfinite += broken.size();
+            broken.forEach(b -> err.println("invariant broken: " + b));
             Map<String, List<HitRateRow>> bySize = new LinkedHashMap<>();
             for (HitRateRow r : result.rows().subList(1, result.rows().size())) {
-                if (r.hits() > infinite.hits() || r.reads() != infinite.reads()) {
-                    aboveInfinite++;
-                    err.println("invariant broken: " + r.cell() + " " + r.hits() + "/" + r.reads()
-                            + " vs never-evicting " + infinite.hits() + "/" + infinite.reads());
-                }
                 bySize.computeIfAbsent(r.sizePercent(), k -> new ArrayList<>()).add(r);
             }
             for (List<HitRateRow> row : bySize.values()) {

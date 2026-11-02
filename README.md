@@ -23,8 +23,8 @@ committed numbers, then deleted. CI runs this step on every push:
 
 ![lab fetch and lab bench on cluster045](docs/proof/e2e.jpg)
 
-100 tests pass (each policy against a brute-force model on 600,000 random operations first), and no
-dependency has a known vulnerability:
+108 tests pass (100 when this screenshot was taken; each policy is checked against a brute-force model
+on 600,000 random operations first), and no dependency has a known vulnerability:
 
 ![mvn verify and the OSV dependency audit](docs/proof/tests.jpg)
 
@@ -123,7 +123,7 @@ disk while `make bench` runs.
 ```bash
 make setup   # resolve dependencies
 make lint    # enforcer, Spotless format check, javac -Xlint:all -Werror
-make test    # 100 tests (about 30 seconds)
+make test    # 108 tests (about 30 seconds)
 make e2e     # download cluster045 by its pin, replay it, require the committed numbers, delete it
 make bench   # all five traces (217 MB download), require all 125 committed cells, delete the traces
 make audit   # OSV.dev check of every resolved dependency
@@ -147,11 +147,12 @@ default `0.1,0.5,1,5,10`), `--mode` (`lookaside` or `every-request`), `--out FIL
 ## Tests and results
 
 Full numbers, commands and the DMAIC write-up: [docs/results/m1.md](docs/results/m1.md); every cell:
-[docs/results/m1-hit-rates.tsv](docs/results/m1-hit-rates.tsv).
+[docs/results/m1-hit-rates.tsv](docs/results/m1-hit-rates.tsv); the ten-rule quality check with its
+mutation table: [docs/quality/2026-11-01.md](docs/quality/2026-11-01.md).
 
 | Check | Result |
 |---|---|
-| Tests (`make test`) | **100 passed**, 0 failed |
+| Tests (`make test`) | **108 passed**, 0 failed |
 | Lint | Spotless clean; `javac -Xlint:all -Werror` no warnings |
 | Dependency audit (OSV.dev) | 9 dependencies (all JUnit, test scope), 0 known vulnerabilities |
 | Reference models | 0 differences over 600,000 random get/put/evict operations per policy |
@@ -159,7 +160,7 @@ Full numbers, commands and the DMAIC write-up: [docs/results/m1.md](docs/results
 | Best policy per cell | W-TinyLFU 14, ARC 11, LRU/LFU/FIFO 0 |
 | Best vs LRU | +0.91 to +11.95 points, mean +4.54 |
 | Sketch width 4x vs 1x capacity | W-TinyLFU +0.05 to +1.22 points in all 25 cells |
-| Mutation check | 12 deliberate bugs, each caught by 1 to 8 tests |
+| Mutation check | 12 deliberate policy bugs, each caught by 1 to 8 tests; 15 more in the harness and gates, all caught ([quality check](docs/quality/2026-11-01.md)) |
 
 Hit rate of reads at 1% of each trace's distinct keys (all sizes in the results file):
 
@@ -176,11 +177,13 @@ Hit rate of reads at 1% of each trace's distinct keys (all sizes in the results 
 | `ReferenceModelTest` | 10 | Each policy gives the same get and evict answers and holds the same keys as its brute-force model after every step of 600,000 random operations (capacities 1 to 150), and the same hits on 80,000 read-and-fill requests |
 | `CacheContractTest` | 30 | For every policy: capacity limits; a miss changes nothing; a put key is then a hit; no duplicates; size never above capacity; `contains` has no side effects; evict removes exactly one key and frees its slot; extreme key values |
 | `PolicyBehaviourTest` | 10 | FIFO shows Belady's anomaly (9 vs 10 misses); LRU evicts the least recent and its hits never fall as it grows; LFU keeps the most used and breaks ties by recency; ARC keeps twice-seen keys through a scan that flushes LRU, moves `p` on a ghost hit and keeps its list invariants; W-TinyLFU keeps at least 145 of 150 frequent keys through a 2,000-key scan, segments stay in their shares |
-| `ReplayerTest` | 7 | A hand-computed LRU replay; capacity rounding; one pass over all caches equals separate passes; policy order changes nothing; no policy beats the never-evicting cache; at 100% size every policy equals it; grid limits |
+| `ReplayerTest` | 8 | A hand-computed LRU replay; capacity rounding; one pass over all caches equals separate passes; policy order changes nothing; no policy beats the never-evicting cache; at 100% size every policy equals it; grid limits, including exactly 200 lanes |
 | `ReplayModeTest` | 4 | Look-aside rules for get, set, add, updates and delete; every-request mode; mode names |
-| `ResultsTableTest` | 3 | Table round trip; comparison finds changed, missing and extra cells per trace; malformed tables rejected |
+| `ResultsTableTest` | 3 | Table round trip and atomic replace; comparison finds changed hits or capacity, missing and extra cells per trace; malformed tables rejected |
 | `TwitterTraceReaderTest` | 8 | Twitter format parsed, every command mapped; a comma inside a key; malformed and oversized lines skipped and counted; CRLF and missing final newline; buffer boundaries |
+| `TraceFetcherTest` | 5 | Against a loopback HTTP server: the pinned bytes are downloaded once and reused; a stalled body is abandoned at the deadline; an oversized body, wrong digest, HTTP 404 or redirect leaves no file |
 | `TracePinTest` | 5 | The committed pins are valid and commit-pinned; unsafe names, hosts, schemes, ports, queries, sizes and hashes rejected; verify accepts only the pinned bytes; an existing mismatching file is never overwritten |
+| `CeilingCheckTest` | 2 | The gate reports a cell above the never-evicting cache or with a different read count |
 | `EndToEndTest` | 5 | `replay` writes the table and a second run matches it; a changed table exits 3; options select the grid; `bench` checks pins before replaying; usage errors exit 2, file errors 1 |
 | `CountMinSketchTest` | 10 | Copied from probabilistic-sketches: never under-counts, error bound, conservative update, halving |
 | `Murmur3Test` | 8 | Copied from probabilistic-sketches: reference hash vectors, uniform top bits |
@@ -194,12 +197,12 @@ flowchart TB
   PB["PolicyBehaviourTest (10)<br/>Belady, stack property, ARC ghosts, scans"] --> Pol
   Pol --> CMS["CountMinSketch + Murmur3"]
   CT["CountMinSketchTest (10) + Murmur3Test (8)<br/>copied with the class"] --> CMS
-  RT["ReplayerTest (7)<br/>ceiling, one pass = many"] --> Sim["Replayer"]
+  RT["ReplayerTest (8)<br/>ceiling, one pass = many"] --> Sim["Replayer"]
   MT["ReplayModeTest (4)"] --> Sim
   TT["ResultsTableTest (3)"] --> Tab["ResultsTable"]
   TR["TwitterTraceReaderTest (8)"] --> Rd["TwitterTraceReader"]
-  TP["TracePinTest (5)"] --> Pin["TracePin + TraceFetcher"]
-  E2E["EndToEndTest (5)"] --> CLI["lab fetch / replay / bench"]
+  TP["TracePinTest (5) + TraceFetcherTest (5)"] --> Pin["TracePin + TraceFetcher"]
+  E2E["EndToEndTest (5) + CeilingCheckTest (2)"] --> CLI["lab fetch / replay / bench"]
   CI["CI: make e2e on cluster045<br/>--expect committed table"] --> CLI
   CLI --> Sim --> Pol
   Sim --> Rd
@@ -262,7 +265,7 @@ pins, and the published numbers are derived from them.
 - Every GitHub Action is pinned to a commit SHA; workflows run read-only, without persisted credentials.
 - Dependabot update pull requests are paused (`open-pull-requests-limit: 0`) so the repository keeps a single `main` branch; dependencies are updated by hand and checked by the CI audit; CI checks every resolved dependency against OSV.dev.
 - CI fails on a formatting or compiler warning, a failing test, or a replayed trace whose hit rates differ from the committed table.
-- Downloads are HTTPS-only from an allow-listed host, follow no redirects, stop past the pinned size and must match the pinned SHA-256; trace names cannot leave the data folder; lines, pins, option lists and cache counts are bounded.
+- Downloads are HTTPS-only from an allow-listed host, must finish within 10 minutes (body included), follow no redirects, stop past the pinned size and must match the pinned SHA-256; trace names cannot leave the data folder; lines, pins, option lists and cache counts are bounded.
 - Report vulnerabilities privately: see [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
