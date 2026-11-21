@@ -19,3 +19,11 @@ CLAUDE.md
 
 # Downloaded traces (pinned in traces/pins.tsv, fetched with `make fetch`, deleted after a run)
 data/
+
+# Secrets (never committed)
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.tfstate
