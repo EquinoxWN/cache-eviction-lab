@@ -8,6 +8,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -224,12 +225,8 @@ public final class Main {
             header.append(String.format(Locale.ROOT, " %10s ", p.label()));
         }
         out.println(header.toString().stripTrailing());
-        Map<String, List<HitRateRow>> bySize = new LinkedHashMap<>();
-        for (HitRateRow r : result.rows().subList(1, result.rows().size())) {
-            bySize.computeIfAbsent(r.sizePercent(), k -> new ArrayList<>()).add(r);
-        }
-        for (List<HitRateRow> row : bySize.values()) {
-            long best = row.stream().mapToLong(HitRateRow::hits).max().orElse(0);
+        for (List<HitRateRow> row : bySize(result)) {
+            long best = bestHits(row);
             StringBuilder line = new StringBuilder(String.format(
                     Locale.ROOT,
                     "  %-7s %,9d",
@@ -241,6 +238,19 @@ public final class Main {
             out.println(line.toString().stripTrailing());
         }
         out.printf(Locale.ROOT, "  (* best at that size; replayed in %.1f s, one run)%n%n", seconds);
+    }
+
+    /** The evicting cells grouped by cache size, in table order. */
+    private static Collection<List<HitRateRow>> bySize(Replayer.Result result) {
+        Map<String, List<HitRateRow>> groups = new LinkedHashMap<>();
+        for (HitRateRow r : result.rows().subList(1, result.rows().size())) {
+            groups.computeIfAbsent(r.sizePercent(), k -> new ArrayList<>()).add(r);
+        }
+        return groups.values();
+    }
+
+    private static long bestHits(List<HitRateRow> row) {
+        return row.stream().mapToLong(HitRateRow::hits).max().orElse(0);
     }
 
     /** Cells that beat the never-evicting cache or counted a different number of reads. */
@@ -269,12 +279,8 @@ public final class Main {
             List<String> broken = ceilingBreaks(result);
             aboveInfinite += broken.size();
             broken.forEach(b -> err.println("invariant broken: " + b));
-            Map<String, List<HitRateRow>> bySize = new LinkedHashMap<>();
-            for (HitRateRow r : result.rows().subList(1, result.rows().size())) {
-                bySize.computeIfAbsent(r.sizePercent(), k -> new ArrayList<>()).add(r);
-            }
-            for (List<HitRateRow> row : bySize.values()) {
-                long best = row.stream().mapToLong(HitRateRow::hits).max().orElse(0);
+            for (List<HitRateRow> row : bySize(result)) {
+                long best = bestHits(row);
                 for (HitRateRow r : row) {
                     if (r.hits() == best) {
                         wins.merge(r.policy(), 1, Integer::sum);

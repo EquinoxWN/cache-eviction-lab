@@ -87,7 +87,7 @@ public final class TraceFetcher implements AutoCloseable {
                 CompletableFuture.delayedExecutor(deadline.toMillis(), TimeUnit.MILLISECONDS));
         try (body) {
             if (response.statusCode() != 200) {
-                throw new IOException(pin.url() + " answered HTTP " + response.statusCode());
+                throw new IOException(url + " answered HTTP " + response.statusCode());
             }
             MessageDigest sha = sha256();
             long total = 0;
